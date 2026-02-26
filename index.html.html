@@ -1,0 +1,1989 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bubble Map (Lava Lamp + Marquee + Multi-Drag)</title>
+
+  <style>
+    :root{
+      --bg:#141928;
+      --ink:#e9edf3;
+      --muted:#a6b0be;
+
+      /* Lava-lamp default bubble (light orange) */
+      --bubble:#f2b07a;
+
+      --panel:#11151b;
+      --panelBorder:#232b36;
+
+      --sideW: 320px;
+      --panelW: 380px;
+
+      --selBg: rgba(255,255,255,0.08);
+      --selBorder: rgba(255,255,255,0.14);
+      --btnHover: rgba(255,255,255,0.06);
+    }
+
+    html,body{
+      height:100%; margin:0; background:var(--bg); color:var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Arial;
+    }
+    .app{display:flex; height:100%;}
+
+    /* Left */
+    .sidebar{
+      width:var(--sideW);
+      background:var(--panel);
+      border-right:1px solid var(--panelBorder);
+      padding:16px 14px;
+      box-sizing:border-box;
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+      gap:10px;
+    }
+    .sidebar h2{
+      font-size:14px; margin:0;
+      color:var(--muted);
+      font-weight:600;
+      letter-spacing:.02em;
+    }
+
+    .brand{
+      padding:10px 10px 6px;
+      border-radius:16px;
+      border:1px solid rgba(233,237,243,0.10);
+      background:rgba(233,237,243,0.02);
+    }
+    .brandLogo{
+      font-size:18px;
+      font-weight:900;
+      letter-spacing:0.04em;
+      line-height:1.05;
+      display:inline-block;
+      background: linear-gradient(180deg, rgba(233,237,243,0.92), rgba(233,237,243,0.62));
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+      user-select:none;
+    }
+    .brandLogo span{
+      background: linear-gradient(180deg, rgba(242,176,122,0.98), rgba(242,176,122,0.70));
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+    }
+    .brandSub{
+      margin-top:6px;
+      font-size:11px;
+      color:rgba(166,176,190,0.90);
+      letter-spacing:0.06em;
+      user-select:none;
+    }
+
+    .list{display:flex; flex-direction:column; gap:10px; flex:1; min-height:0; overflow:auto; padding-right:6px;}
+    .rowItem{
+      display:flex; gap:8px; align-items:center;
+      background:rgba(255,255,255,0.02);
+      border-radius:14px;
+      padding:2px;
+      transition: background .12s ease, box-shadow .12s ease;
+      position: relative;
+    }
+    .rowItem.isSelected{
+      background: var(--selBg);
+      box-shadow: inset 0 0 0 1px var(--selBorder);
+    }
+    .rowItem.isDropTarget{
+      background: rgba(255,255,255,0.04);
+      box-shadow: inset 0 0 0 2px rgba(233,237,243,0.18);
+    }
+    .rowItem.isDragging{ opacity: 0.55; }
+
+    .handle{
+      width:34px; height:40px;
+      border:1px solid var(--panelBorder);
+      border-radius:12px;
+      display:flex; align-items:center; justify-content:center;
+      color:#9aa4b2;
+      cursor:default;
+      user-select:none;
+      background:rgba(255,255,255,0.02);
+    }
+
+    .itemInput{
+      flex:1; height:40px;
+      border:1px solid var(--panelBorder);
+      border-radius:12px;
+      padding:0 12px;
+      font-size:14px;
+      outline:none;
+      background:rgba(255,255,255,0.02);
+      color:var(--ink);
+    }
+    .itemInput::placeholder{ color:rgba(233,237,243,0.35); }
+
+    .miniBtn{
+      height:40px; min-width:40px;
+      border:1px solid var(--panelBorder);
+      border-radius:12px;
+      background:rgba(255,255,255,0.02);
+      cursor:pointer;
+      font-size:14px;
+      color:var(--ink);
+      position: relative;
+      z-index: 3;
+    }
+    .miniBtn:hover{ background:var(--btnHover); }
+
+    .adder{
+      display:flex; gap:8px; align-items:center;
+      padding:10px 10px;
+      border-radius:14px;
+    }
+    .adderTop{
+      border:1px solid rgba(233,237,243,0.25);
+      background:rgba(233,237,243,0.03);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+    }
+    .adderTop .itemInput, .adderTop .miniBtn, .adderTop .handle{
+      background:rgba(0,0,0,0.10);
+      border-color: rgba(233,237,243,0.18);
+    }
+    .adder .addInput{ flex:1; }
+
+    .help{
+      margin-top:auto;
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.45;
+      border:1px solid var(--panelBorder);
+      border-radius:12px;
+      padding:10px 10px;
+      background:rgba(255,255,255,0.02);
+    }
+
+    /* Center */
+    .stage{flex:1; position:relative; overflow:hidden;}
+    canvas{
+  display:block;
+  width:100%;
+  height:100%;
+  background:
+    radial-gradient(
+      ellipse at 50% 120%,
+      rgba(255,210,140,0.24) 0%,
+      rgba(255,200,120,0.14) 22%,
+      rgba(255,180,90,0.07) 40%,
+      rgba(0,0,0,0) 70%
+    ),
+    radial-gradient(
+      ellipse at 50% 100%,
+      rgba(255,230,180,0.08) 0%,
+      rgba(0,0,0,0) 55%
+    ),
+    var(--bg);
+}
+
+    .hint{
+      position:absolute; left:16px; bottom:14px;
+      font-size:12px; color:var(--muted);
+      background:rgba(17,21,27,0.72);
+      border:1px solid var(--panelBorder);
+      padding:8px 10px;
+      border-radius:12px;
+      backdrop-filter: blur(6px);
+      user-select:none;
+      pointer-events:none;
+    }
+
+    /* Right */
+    .panel{
+      width:var(--panelW); max-width:45vw;
+      background:var(--panel);
+      border-left:1px solid var(--panelBorder);
+      padding:0;
+      box-sizing:border-box;
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+    }
+    .panelMain{
+      flex:1;
+      overflow:auto;
+      padding:18px 18px 12px;
+      min-height:0;
+    }
+    .panelFooter{
+      border-top:1px solid var(--panelBorder);
+      padding:10px 18px 14px;
+      background:rgba(17,21,27,0.88);
+      backdrop-filter: blur(6px);
+    }
+    .panelFooter .footerInner{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px;
+    }
+    .saveBar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-top:8px;
+      padding-top:8px;
+      border-top:1px dashed rgba(233,237,243,0.10);
+    }
+    .saveStatus{
+      font-size:11px;
+      color:rgba(166,176,190,0.90);
+      letter-spacing:0.03em;
+      user-select:none;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .iconBtn{
+      width:40px;
+      height:36px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:12px;
+      border:1px solid var(--panelBorder);
+      background:rgba(255,255,255,0.02);
+      cursor:pointer;
+      font-size:18px;
+      line-height:1;
+      color:var(--ink);
+    }
+    .iconBtn:hover{ background:var(--btnHover); }
+.iconBtn{
+  gap:8px;
+  padding:0 12px;
+  width:auto;
+  height:38px;
+  min-width:120px;
+  justify-content:flex-start;
+}
+.iconBtn svg{
+  width:16px;
+  height:16px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+}
+.iconBtn span{
+  font-size:11px;
+  letter-spacing:.04em;
+  color:var(--muted);
+  text-align:center;
+  line-height:1.05;
+  white-space:normal;
+}
+
+.panelFooter label{
+      font-size:12px; color:var(--muted);
+    }
+    .panelFooter input[type="color"]{
+      width:44px; height:34px;
+      padding:0;
+      border-radius:10px;
+      border:1px solid var(--panelBorder);
+      background:rgba(255,255,255,0.02);
+      cursor:pointer;
+    }
+    .panel h1{font-size:18px; margin:0 0 6px;}
+    .panel .empty{color:var(--muted); font-size:14px; margin-top:10px;}
+    .panel .tag{
+      display:inline-block; font-size:12px; color:var(--muted);
+      border:1px solid var(--panelBorder);
+      padding:4px 8px; border-radius:999px;
+      margin:6px 6px 0 0;
+      background:rgba(255,255,255,0.02);
+    }
+    .field{margin-top:12px;}
+    .field label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px;}
+    .field input[type="text"], .field textarea{
+      width:100%;
+      box-sizing:border-box;
+      border:1px solid var(--panelBorder);
+      border-radius:12px;
+      padding:10px 10px;
+      font-size:14px;
+      outline:none;
+      background:rgba(255,255,255,0.02);
+      color:var(--ink);
+    }
+    .field textarea{min-height:90px; resize:vertical;}
+    .row{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
+    button{
+      cursor:pointer; border:1px solid var(--panelBorder); background:rgba(255,255,255,0.02);
+      padding:8px 10px; border-radius:12px; font-size:13px;
+      color:var(--ink);
+    }
+    button:hover{background:var(--btnHover);}
+    input[type="range"]{width:100%;}
+  
+/* stronger footer readability */
+.panelFooter label{
+  font-size:13px;
+  color:#e9edf3;
+  font-weight:600;
+  letter-spacing:0.03em;
+}
+
+.saveStatus{
+  font-size:13px !important;
+  color:#e9edf3 !important;
+  font-weight:500;
+  letter-spacing:0.03em;
+}
+
+.iconBtn span{
+  font-size:12px !important;
+  color:#ffffff !important;
+  font-weight:600;
+  line-height:1.05;
+}
+
+
+#bgColor{
+  border:3px solid #ffffff;
+  border-radius:6px;
+  padding:2px;
+  background:#141928;
+}
+
+
+/* footer grouping for clarity */
+.footerGroup{
+  margin-top:10px;
+  padding:10px 12px;
+  border:1px solid rgba(233,237,243,0.14);
+  border-radius:14px;
+  background:rgba(255,255,255,0.02);
+}
+.footerGroup + .footerGroup{ margin-top:10px; }
+
+.bgRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.hexPill{
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:0.06em;
+  color:#ffffff;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(233,237,243,0.18);
+  background:rgba(0,0,0,0.18);
+  user-select:text;
+}
+
+</style>
+</head>
+
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand" aria-label="Lava Map">
+      <div class="brandLogo">Lava <span>Map</span></div>
+      <div class="brandSub">gooey bubble mapper</div>
+    </div>
+
+    <div class="adder adderTop">
+      <div class="handle" style="cursor:default; opacity:.45;">＋</div>
+<input class="itemInput addInput" id="addInput" placeholder="新しい水玉の名前（Enter / blurで追加）" />
+      <button class="miniBtn" id="addBtn" title="追加">↵</button>
+    </div>
+
+    <h2>リスト（×で削除 / 複数選択）</h2>
+    <div class="list" id="list"></div>
+
+    <div class="help">
+      ・クリック：単体選択 / Shift+クリック：追加/解除<br>
+      ・空白ドラッグ：囲い選択（Shiftで加算）<br>
+      ・複数選択中：どれかをドラッグすると全員移動<br>
+      ・Del：選択を削除（リストも）<br>
+      ・保存/ロードボタン：JSON保存/復元（またはJSONドラッグでロード）<br>・ホイール：パン / Ctrl+ホイール：ズーム
+    </div>
+  </aside>
+
+  <div class="stage" id="stage">
+    <canvas id="c"></canvas>
+    <div class="hint">空白ドラッグ＝囲い選択 / 複数ドラッグ移動 / Lava Lamp（薄オレンジ）</div>
+  </div>
+
+  
+  <aside class="panel" id="panelWrap">
+    <div class="panelMain" id="panel"></div>
+    <div class="panelFooter">
+      <div class="footerGroup" aria-label="Canvas background">
+        <div class="bgRow">
+          <label for="bgColor">背景色（キャンバス）</label>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="hexPill" id="bgHex">#141928</span>
+            <input type="color" id="bgColor" />
+          </div>
+        </div>
+      </div>
+
+      <div class="footerGroup" aria-label="Autosave status">
+        <div class="saveStatus" id="saveStatus">autosave: -</div>
+      </div>
+
+      <div class="footerGroup" aria-label="JSON import export">
+        <div class="saveBar" style="margin-top:0; padding-top:0; border-top:none;">
+          <div style="display:flex; gap:10px; width:100%; justify-content:center;">
+            <button class="iconBtn" id="btnSaveJson" title="JSONとして保存">
+              <svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><path d="M9 14h6"/></svg>
+              <span>JSON<br>保存</span>
+            </button>
+            <button class="iconBtn" id="btnLoadJson" title="JSONを読み込む">
+              <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M5 21h14"/></svg>
+              <span>JSON<br>読込</span>
+            </button>
+            <input type="file" id="fileLoadJson" accept=".json,application/json" style="display:none" />
+          </div>
+        </div>
+      </div>
+
+      <div class="footerGroup" aria-label="Color gather">
+        <div class="saveBar" style="margin-top:0; padding-top:0; border-top:none;">
+          <div style="display:flex; gap:10px; width:100%; justify-content:center;">
+            <button class="iconBtn" id="btnGatherSimilar" title="色の近い水玉がゆっくり近づきます">
+              <svg viewBox="0 0 24 24">
+                <path d="M8 7h8"/>
+                <path d="M12 3v4"/>
+                <path d="M5 12h4"/>
+                <path d="M15 12h4"/>
+                <path d="M12 17v4"/>
+                <path d="M8.5 12a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0"/>
+              </svg>
+              <span>近い色<br>寄せる</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+</div>
+
+
+<script>
+/* ===== utils ===== */
+function rand(a,b){ return a + Math.random()*(b-a); }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+function wobbleFreq(n){
+  // smaller bubbles wobble faster
+  const r = Math.max(10, n?.r ?? 44);
+  const rMin = 22, rMax = 120;
+  const inv = clamp(1 - ((r - rMin) / (rMax - rMin)), 0, 1); // small => 1
+  return 1.2 + 7.5 * Math.pow(inv, 1.6); // ~1.2..8.7  small bubbles much faster
+}
+
+function escapeHtml(s){
+  return (s ?? "").toString()
+    .replaceAll("&","&amp;").replaceAll("<","&lt;")
+    .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function setCss(v, val){ document.documentElement.style.setProperty(v, val); }
+function smoothstep(edge0, edge1, x){
+  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+function uid(){ return crypto.randomUUID(); }
+
+function parseCssColorToRgb(col){
+  col = (col ?? "").trim();
+  if(col.startsWith("#")){
+    const h = col.slice(1);
+    const hex = (h.length===3) ? h.split("").map(x=>x+x).join("") : h;
+    return { r: parseInt(hex.slice(0,2),16), g: parseInt(hex.slice(2,4),16), b: parseInt(hex.slice(4,6),16) };
+  }
+  const m = col.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if(m) return {r:+m[1], g:+m[2], b:+m[3]};
+  return {r:242,g:176,b:122};
+}
+function toHex(col){
+  col = (col || "").trim();
+  if(col.startsWith("#")){
+    if(col.length === 4) return "#" + col[1]+col[1] + col[2]+col[2] + col[3]+col[3];
+    if(col.length === 7) return col;
+  }
+  const {r,g,b} = parseCssColorToRgb(col);
+  const h = (n)=> n.toString(16).padStart(2,"0");
+  return "#" + h(r) + h(g) + h(b);
+}
+function darkenColor(col, mul){
+  const {r,g,b} = parseCssColorToRgb(col);
+  return `rgb(${Math.round(r*mul)}, ${Math.round(g*mul)}, ${Math.round(b*mul)})`;
+}
+function lightenColor(col, amt){
+  // amt: 0..1 (mix towards white)
+  const {r,g,b} = parseCssColorToRgb(col);
+  const mix = (c)=> Math.round(c + (255 - c) * clamp(amt,0,1));
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+function luminance(col){
+  const {r,g,b} = parseCssColorToRgb(col);
+  const sr = r/255, sg = g/255, sb = b/255;
+  const f = (c)=> (c<=0.04045) ? (c/12.92) : Math.pow((c+0.055)/1.055, 2.4);
+  const R=f(sr), G=f(sg), B=f(sb);
+  return 0.2126*R + 0.7152*G + 0.0722*B;
+}
+
+/* ===== data ===== */
+let rows = [];   // { rowId, label, nodeId, lastNonEmpty }
+let nodes = [];  // { id,rowId,label,desc,url,x,y,r,color, seed, pulse }
+let selectedIds = new Set();
+let primarySelectedId = null;
+let hoveredId = null;
+let copiedNodeId = null;
+
+/* ===== undo / redo ===== */
+let history = [];
+let historyIndex = -1;
+let _armedHistoryKeys = new WeakSet();
+
+function _snapshot(){
+  return JSON.stringify({
+    rows,
+    nodes,
+    selectedIds:[...selectedIds],
+    primarySelectedId,
+    bg: getCss("--bg") || "#0b0d10",
+  });
+}
+
+function _restore(state){
+  const s = JSON.parse(state);
+  rows = s.rows || [];
+  nodes = s.nodes || [];
+  selectedIds = new Set(s.selectedIds || []);
+  primarySelectedId = s.primarySelectedId || null;
+
+  if(s.bg) setCss("--bg", s.bg);
+
+  renderList();
+  renderPanel();
+}
+
+function pushHistory(){
+  const snap = _snapshot();
+  // avoid duplicate consecutive snapshots
+  if(historyIndex >= 0 && history[historyIndex] === snap) return;
+
+  // discard "future" history if we branched
+  history = history.slice(0, historyIndex + 1);
+  history.push(snap);
+  historyIndex = history.length - 1;
+
+  queueAutosave();
+}
+
+function undo(){
+  if(historyIndex <= 0) return;
+  historyIndex--;
+  _restore(history[historyIndex]);
+}
+
+
+function redo(){
+  if(historyIndex >= history.length - 1) return;
+  historyIndex++;
+  _restore(history[historyIndex]);
+}
+
+/* ===== save / load (JSON) ===== */
+const SAVE_VERSION = 1;
+
+function serializeState(){
+  return {
+    version: SAVE_VERSION,
+    savedAt: new Date().toISOString(),
+    rows,
+    nodes,
+    selectedIds: [...selectedIds],
+    primarySelectedId,
+    bg: getCss("--bg") || "#0b0d10",
+  };
+}
+
+function applyState(obj, {pushHist=true} = {}){
+  if(!obj || typeof obj !== "object") throw new Error("Invalid JSON");
+  // basic shape validation
+  if(!Array.isArray(obj.rows) || !Array.isArray(obj.nodes)) throw new Error("Invalid state shape");
+  rows = obj.rows;
+  nodes = obj.nodes;
+  selectedIds = new Set(Array.isArray(obj.selectedIds) ? obj.selectedIds : []);
+  primarySelectedId = obj.primarySelectedId || null;
+  if(obj.bg) setCss("--bg", obj.bg);
+
+  renderList();
+  renderPanel();
+  if(pushHist) pushHistory();
+}
+
+
+/* ===== autosave (localStorage) ===== */
+const AUTOSAVE_KEY = "lava-map:autosave:v1";
+let autosaveTimer = null;
+let autosaveDirty = false;
+let autosaveLastAt = 0;
+
+function setSaveStatus(msg){
+  const el = document.getElementById("saveStatus");
+  if(el) el.textContent = msg;
+}
+
+function queueAutosave(){
+  autosaveDirty = true;
+  setSaveStatus("autosave: saving…");
+  if(autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(()=>{
+    try{
+      const data = serializeState();
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data));
+      autosaveLastAt = Date.now();
+      autosaveDirty = false;
+      const t = new Date(autosaveLastAt);
+      const hh = String(t.getHours()).padStart(2,"0");
+      const mm = String(t.getMinutes()).padStart(2,"0");
+      const ss = String(t.getSeconds()).padStart(2,"0");
+      setSaveStatus(`autosave: saved ${hh}:${mm}:${ss}`);
+    }catch(err){
+      setSaveStatus("autosave: failed");
+      console.error(err);
+    }
+  }, 700); // debounce
+}
+
+function tryRestoreAutosave(){
+  try{
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if(!raw) { setSaveStatus("autosave: -"); return false; }
+    const obj = JSON.parse(raw);
+    applyState(obj, {pushHist:true});
+    const t = obj?.savedAt ? new Date(obj.savedAt) : new Date();
+    const hh = String(t.getHours()).padStart(2,"0");
+    const mm = String(t.getMinutes()).padStart(2,"0");
+    const ss = String(t.getSeconds()).padStart(2,"0");
+    setSaveStatus(`autosave: restored ${hh}:${mm}:${ss}`);
+    return true;
+  }catch(err){
+    console.error(err);
+    setSaveStatus("autosave: failed to restore");
+    return false;
+  }
+}
+
+function downloadJson(filename, obj){
+  const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function saveToJson(){
+  const data = serializeState();
+  const stamp = new Date().toISOString().replaceAll(":","-").replaceAll(".","-");
+  downloadJson(`lava-map_${stamp}.json`, data);
+}
+
+async function loadFromFile(file){
+  const text = await file.text();
+  const obj = JSON.parse(text);
+  applyState(obj, {pushHist:true});
+}
+
+function isJsonFile(file){
+  const name = (file?.name || "").toLowerCase();
+  return name.endsWith(".json") || (file?.type === "application/json");
+}
+
+// ===== save/load UI buttons =====
+const btnSaveJson = document.getElementById("btnSaveJson");
+const btnLoadJson = document.getElementById("btnLoadJson");
+const fileLoadJson = document.getElementById("fileLoadJson");
+
+const btnGatherSimilar = document.getElementById("btnGatherSimilar");
+
+let gatherSimilar = { active:false, t0:0, duration: 950 };
+
+function rgbToHsv(rgb){
+  const r = rgb.r/255, g = rgb.g/255, b = rgb.b/255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  const d = max - min;
+  let h = 0;
+  if(d !== 0){
+    if(max === r) h = ((g - b) / d) % 6;
+    else if(max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if(h < 0) h += 360;
+  }
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+  return {h, s, v};
+}
+function hueDistanceDeg(h1, h2){
+  let d = Math.abs(h1 - h2);
+  if(d > 180) d = 360 - d;
+  return d; // 0..180
+}
+// Similarity focused on hue (0..1). "More similar" => closer to 1.
+function colorSimilarity(aCol, bCol){
+  const a = rgbToHsv(parseCssColorToRgb(aCol));
+  const b = rgbToHsv(parseCssColorToRgb(bCol));
+  const dh = hueDistanceDeg(a.h, b.h) / 180; // 0..1
+  // Hue dominates; low-saturation colors are treated as "less confident"
+  const sat = Math.min(a.s, b.s);
+  const hueSim = 1 - dh;
+  // Sharpen: very close hues become much stronger
+  const sim = Math.pow(Math.max(0, hueSim), 2.2) * (0.55 + 0.45*sat);
+  return clamp(sim, 0, 1);
+}
+function setGatherBtnState(running){
+  if(!btnGatherSimilar) return;
+  btnGatherSimilar.disabled = !!running;
+  btnGatherSimilar.style.opacity = running ? "0.65" : "1";
+  btnGatherSimilar.style.pointerEvents = running ? "none" : "auto";
+  const span = btnGatherSimilar.querySelector("span");
+  if(span) span.innerHTML = running ? "寄せ中…<br>（待機）" : "近い色<br>寄せる";
+}
+
+function startGatherSimilar(){
+  if(!btnGatherSimilar) return;
+  if(gatherSimilar.active) return;
+  if(!nodes || nodes.length < 2) return;
+
+  gatherSimilar.active = true;
+  gatherSimilar.t0 = performance.now();
+  setGatherBtnState(true);
+}
+
+if(btnGatherSimilar){
+  btnGatherSimilar.addEventListener("click", ()=>{
+    startGatherSimilar();
+  });
+}
+
+
+if(btnSaveJson){
+  btnSaveJson.addEventListener("click", ()=>{
+    try{ saveToJson(); }catch(err){ alert("保存に失敗しました: " + (err?.message || err)); }
+  });
+}
+if(btnLoadJson && fileLoadJson){
+  btnLoadJson.addEventListener("click", ()=> fileLoadJson.click());
+  fileLoadJson.addEventListener("change", async ()=>{
+    const file = fileLoadJson.files?.[0];
+    if(!file) return;
+    try{
+      await loadFromFile(file);
+    }catch(err){
+      alert("JSONの読み込みに失敗しました: " + (err?.message || err));
+    }finally{
+      fileLoadJson.value = "";
+    }
+  });
+}
+// Call once per editing session (focus/pointerdown) to capture pre-change state.
+function armHistoryOnce(el){
+  if(!el) return;
+  if(_armedHistoryKeys.has(el)) return;
+  _armedHistoryKeys.add(el);
+  pushHistory();
+  const disarm = ()=>{
+    try{ _armedHistoryKeys.delete(el); }catch{}
+    el.removeEventListener("blur", disarm);
+    el.removeEventListener("pointerup", disarm);
+    el.removeEventListener("pointercancel", disarm);
+    el.removeEventListener("keyup", onKeyUp);
+  };
+  const onKeyUp = (e)=>{
+    // End session on Enter/Escape for inputs
+    if(e.key === "Enter" || e.key === "Escape") disarm();
+  };
+  el.addEventListener("blur", disarm, {once:true});
+  el.addEventListener("pointerup", disarm, {once:true});
+  el.addEventListener("pointercancel", disarm, {once:true});
+  el.addEventListener("keyup", onKeyUp);
+}
+
+function getNode(id){ return nodes.find(n=>n.id===id) || null; }
+function getRow(rowId){ return rows.find(r=>r.rowId===rowId) || null; }
+function getRowByNodeId(nodeId){ return rows.find(r=>r.nodeId===nodeId) || null; }
+
+function anySelected(){ return selectedIds.size > 0; }
+function isSelected(id){ return selectedIds.has(id); }
+
+function clearSelection(){
+  selectedIds.clear();
+  primarySelectedId = null;
+  renderPanel();
+  renderList(false);
+}
+function selectSingle(id){
+  selectedIds.clear();
+  if(id) selectedIds.add(id);
+  primarySelectedId = id;
+  renderPanel();
+  renderList(false);
+}
+function toggleSelection(id){
+  if(selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  primarySelectedId = id;
+  renderPanel();
+  renderList(false);
+}
+
+function generateUniqueName(base){
+  const b = (base ?? "").trim() || "名前";
+  const existing = new Set(rows.map(r=>r.label));
+  if(!existing.has(b)) return b;
+  for(let i=2;i<999;i++){
+    const cand = `${b}${i}`;
+    if(!existing.has(cand)) return cand;
+  }
+  return `${b}${Date.now()%1000}`;
+}
+
+/* ===== camera ===== */
+const stage = document.getElementById("stage");
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+// ===== JSON drag & drop load =====
+stage.addEventListener("dragover", (e)=>{
+  e.preventDefault();
+  try{ e.dataTransfer.dropEffect = "copy"; }catch{}
+});
+stage.addEventListener("drop", async (e)=>{
+  e.preventDefault();
+  const file = e.dataTransfer?.files?.[0];
+  if(!file) return;
+  if(!isJsonFile(file)) return;
+  try{
+    await loadFromFile(file);
+  }catch(err){
+    alert("JSONの読み込みに失敗しました: " + (err?.message || err));
+  }
+});
+// ===== global blur-commit for text editing =====
+// Clicking anywhere else while editing should end editing and commit (same as list blur behavior).
+document.addEventListener("pointerdown", (e)=>{
+  const ae = document.activeElement;
+  if(!ae) return;
+  const isText = (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA");
+  if(!isText) return;
+  // If click is outside the focused element, force blur so its own blur handler can commit.
+  if(e.target !== ae && !ae.contains(e.target)){
+    try{ ae.blur(); }catch{}
+  }
+}, true);
+
+
+let W=0,H=0,DPR=1;
+
+const cam = { x:0, y:0 };
+const camTarget = { x:0, y:0 };
+let zoom = 1.0;
+let zoomTarget = 1.0;
+
+function screenToWorld(sx,sy){
+  return { x: (sx - cam.x) / zoom, y: (sy - cam.y) / zoom };
+}
+function worldToScreen(wx,wy){
+  return { x: wx*zoom + cam.x, y: wy*zoom + cam.y };
+}
+function setCameraTargetCenterOnNode(n){
+  camTarget.x = (W/2) - n.x*zoomTarget;
+  camTarget.y = (H/2) - n.y*zoomTarget;
+}
+function nudgeCamera(dx,dy){
+  cam.x += dx; cam.y += dy;
+  camTarget.x += dx; camTarget.y += dy;
+}
+function zoomAtScreenPoint(newZoomTarget, sx, sy){
+  const z0 = zoomTarget;
+  const z1 = clamp(newZoomTarget, 0.35, 2.6);
+  zoomTarget = z1;
+
+  const wx = (sx - camTarget.x) / z0;
+  const wy = (sy - camTarget.y) / z0;
+  camTarget.x = sx - wx * z1;
+  camTarget.y = sy - wy * z1;
+}
+function updateCamera(){
+  cam.x += (camTarget.x - cam.x) * 0.14;
+  cam.y += (camTarget.y - cam.y) * 0.14;
+  zoom += (zoomTarget - zoom) * 0.16;
+}
+
+/* ===== offscreen goo ===== */
+let OFF_SCALE = 0.92;
+let baseC, blurC, baseCtx, blurCtx;
+let glowC, glowBlurC, glowCtx, glowBlurCtx;
+
+function resize(){
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  W = canvas.clientWidth = canvas.parentElement.clientWidth;
+  H = canvas.clientHeight = canvas.parentElement.clientHeight;
+  canvas.width = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+
+  const ow = Math.max(1, Math.floor(W * OFF_SCALE));
+  const oh = Math.max(1, Math.floor(H * OFF_SCALE));
+
+  baseC = document.createElement("canvas");
+  blurC = document.createElement("canvas");
+  baseC.width = blurC.width = ow;
+  baseC.height = blurC.height = oh;
+
+  baseCtx = baseC.getContext("2d", { willReadFrequently:true });
+  blurCtx = blurC.getContext("2d", { willReadFrequently:true });
+
+  // glow layers (separate from goo thresholding)
+  glowC = document.createElement("canvas");
+  glowBlurC = document.createElement("canvas");
+  glowC.width = glowBlurC.width = ow;
+  glowC.height = glowBlurC.height = oh;
+  glowCtx = glowC.getContext("2d", { willReadFrequently:true });
+  glowBlurCtx = glowBlurC.getContext("2d", { willReadFrequently:true });
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* ===== create/remove/rename ===== */
+function createRowAndNode(label, preset=null){
+  const name = (label ?? "").trim();
+  if(!name) return null;
+
+
+  pushHistory();
+
+  const rowId = uid();
+  const nodeId = uid();
+
+  const n = {
+    id: nodeId,
+    rowId,
+    label: name,
+    desc: preset?.desc ?? "",
+    url: preset?.url ?? "",
+    x: preset?.x ?? rand(W*0.30, W*0.70) / zoomTarget,
+    y: preset?.y ?? rand(H*0.25, H*0.75) / zoomTarget,
+    r: preset?.r ?? (44 + rand(-6, 10)),
+    color: preset?.color ?? getCss("--bubble"),
+    seed: rand(0,1000),
+    pulse: 0,
+  };
+
+  rows.push({ rowId, label:name, nodeId, lastNonEmpty:name });
+  nodes.push(n);
+
+  selectSingle(nodeId);
+  renderList();
+  renderPanel();
+  return n;
+}
+
+function removeNode(nodeId){
+  const n = getNode(nodeId);
+  if(!n) return;
+
+  pushHistory();
+  rows = rows.filter(r => r.rowId !== n.rowId);
+  nodes = nodes.filter(x => x.id !== nodeId);
+  selectedIds.delete(nodeId);
+  if(primarySelectedId === nodeId) primarySelectedId = selectedIds.size ? [...selectedIds][0] : null;
+  renderList();
+  renderPanel();
+}
+
+function removeSelected(){
+  const ids = [...selectedIds];
+  if(ids.length === 0) return;
+
+  pushHistory();
+  for(const id of ids) removeNode(id);
+  clearSelection();
+}
+
+function setLabel(nodeId, rawLabel, {commitOnEmpty=false} = {}){
+  const n = getNode(nodeId);
+  if(!n) return;
+
+  const r = getRowByNodeId(nodeId);
+  const label = (rawLabel ?? "").toString();
+  n.label = label;
+  if(r) r.label = label;
+
+  const trimmed = label.trim();
+  if(r && trimmed) r.lastNonEmpty = trimmed;
+
+  if(commitOnEmpty){
+    const finalLabel = trimmed || (r?.lastNonEmpty?.trim()) || "名前";
+    n.label = finalLabel;
+    if(r){ r.label = finalLabel; r.lastNonEmpty = finalLabel; }
+  }
+}
+
+/* ===== multi-color apply ===== */
+function applyColorToSelection(hex){
+  for(const id of selectedIds){
+    const n = getNode(id);
+    if(n) n.color = hex;
+  }
+}
+
+/* ===== picking ===== */
+function nodeAtWorld(wx,wy){
+  for(let i=nodes.length-1;i>=0;i--){
+    const n = nodes[i];
+    const dx = wx - n.x, dy = wy - n.y;
+    if(dx*dx + dy*dy <= (n.r+14)*(n.r+14)) return n;
+  }
+  return null;
+}
+
+/* ===== marquee selection ===== */
+let marquee = { active:false, sx0:0, sy0:0, sx1:0, sy1:0, additive:false };
+function marqueeRect(){
+  const x0 = Math.min(marquee.sx0, marquee.sx1);
+  const y0 = Math.min(marquee.sy0, marquee.sy1);
+  const x1 = Math.max(marquee.sx0, marquee.sx1);
+  const y1 = Math.max(marquee.sy0, marquee.sy1);
+  return {x0,y0,x1,y1};
+}
+function applyMarqueeSelection(){
+  const {x0,y0,x1,y1} = marqueeRect();
+  if(!marquee.additive) selectedIds.clear();
+
+  for(const n of nodes){
+    const s = worldToScreen(n.x, n.y);
+    const r = n.r * zoom;
+    const inside =
+      (s.x + r >= x0 && s.x - r <= x1 &&
+       s.y + r >= y0 && s.y - r <= y1);
+    if(inside) selectedIds.add(n.id);
+  }
+  primarySelectedId = selectedIds.size ? [...selectedIds][selectedIds.size-1] : null;
+  renderPanel();
+  renderList(false);
+}
+
+/* ===== multi-drag ===== */
+let drag = { active:false, pointerId:null, startW:{x:0,y:0}, snap:new Map() };
+
+function startMultiDrag(pointerId, wx, wy){
+  drag.active = true;
+  drag.pointerId = pointerId;
+  drag.startW = {x:wx, y:wy};
+  drag.snap = new Map();
+  for(const id of selectedIds){
+    const n = getNode(id);
+    if(n) drag.snap.set(id, {x:n.x, y:n.y});
+  }
+  canvas.setPointerCapture(pointerId);
+}
+function updateMultiDrag(wx, wy){
+  const dx = wx - drag.startW.x;
+  const dy = wy - drag.startW.y;
+  for(const [id, p] of drag.snap.entries()){
+    const n = getNode(id);
+    if(n){
+      n.x = p.x + dx;
+      n.y = p.y + dy;
+    }
+  }
+}
+function endMultiDrag(pointerId){
+  if(drag.pointerId === pointerId){
+    pushHistory();
+    drag.active = false;
+    drag.pointerId = null;
+    drag.snap.clear();
+    try{ canvas.releasePointerCapture(pointerId); } catch {}
+  }
+}
+
+/* ===== interactions ===== */
+let pan = { active:false, startX:0, startY:0, pointerId:null };
+
+canvas.addEventListener("pointerdown", (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+
+  if(e.button === 1){
+    pan.active = true;
+    pan.startX = e.clientX;
+    pan.startY = e.clientY;
+    pan.pointerId = e.pointerId;
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    return;
+  }
+
+  const w = screenToWorld(sx,sy);
+  const hit = nodeAtWorld(w.x,w.y);
+
+  if(!hit && e.button === 0){
+    marquee.active = true;
+    marquee.additive = !!e.shiftKey;
+    marquee.sx0 = marquee.sx1 = sx;
+    marquee.sy0 = marquee.sy1 = sy;
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    return;
+  }
+
+  if(hit){
+    if(e.shiftKey){
+      toggleSelection(hit.id);
+    }else{
+      if(!isSelected(hit.id)) selectSingle(hit.id);
+      else{
+        primarySelectedId = hit.id;
+        renderPanel();
+        renderList(false);
+      }
+    }
+
+    hit.pulse = Math.max(hit.pulse, 0.6);
+
+    if(isSelected(hit.id)){
+      startMultiDrag(e.pointerId, w.x, w.y);
+    }
+  }
+});
+
+canvas.addEventListener("pointermove", (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+
+  if(pan.active){
+    const dx = e.clientX - pan.startX;
+    const dy = e.clientY - pan.startY;
+    pan.startX = e.clientX;
+    pan.startY = e.clientY;
+    nudgeCamera(dx,dy);
+    return;
+  }
+
+  if(marquee.active){
+    marquee.sx1 = sx;
+    marquee.sy1 = sy;
+    return;
+  }
+
+  if(drag.active){
+    const w = screenToWorld(sx,sy);
+    updateMultiDrag(w.x, w.y);
+    return;
+  }
+
+  const w = screenToWorld(sx,sy);
+  const h = nodeAtWorld(w.x,w.y);
+  hoveredId = h ? h.id : null;
+  canvas.style.cursor = h ? "pointer" : "default";
+});
+
+canvas.addEventListener("pointerup", (e)=>{
+  if(pan.active && e.pointerId === pan.pointerId){
+    pan.active = false;
+    pan.pointerId = null;
+    try{ canvas.releasePointerCapture(e.pointerId); } catch {}
+    return;
+  }
+
+  if(marquee.active){
+    marquee.active = false;
+    applyMarqueeSelection();
+    try{ canvas.releasePointerCapture(e.pointerId); } catch {}
+    return;
+  }
+
+  if(drag.active){
+    endMultiDrag(e.pointerId);
+    return;
+  }
+
+  try{ canvas.releasePointerCapture(e.pointerId); } catch {}
+});
+
+canvas.addEventListener("auxclick", (e)=>{ e.preventDefault(); }, {passive:false});
+canvas.addEventListener("contextmenu", (e)=>{ e.preventDefault(); });
+
+canvas.addEventListener("wheel", (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+
+  if(e.ctrlKey){
+    e.preventDefault();
+    const delta = -e.deltaY;
+    const factor = Math.exp(delta * 0.0012);
+    zoomAtScreenPoint(zoomTarget * factor, sx, sy);
+  }else{
+    e.preventDefault();
+    const dx = (e.shiftKey ? e.deltaY : e.deltaX);
+    const dy = (e.shiftKey ? 0 : e.deltaY);
+    nudgeCamera(-dx, -dy);
+  }
+}, {passive:false});
+
+/* ===== inline label edit (double click) ===== */
+let inlineEdit = { active:false, nodeId:null, el:null, composing:false };
+function closeInlineEdit(commit=true){
+  if(!inlineEdit.active) return;
+  const el = inlineEdit.el;
+  const nodeId = inlineEdit.nodeId;
+  inlineEdit.active = false;
+  inlineEdit.nodeId = null;
+  inlineEdit.composing = false;
+  try{ el.remove(); }catch{}
+  inlineEdit.el = null;
+  if(commit && nodeId && el){
+    setLabel(nodeId, el.value, {commitOnEmpty:true});
+    renderList(false);
+    if(selectedIds.size === 1 && isSelected(nodeId)) renderPanel();
+  }
+}
+function openInlineEdit(n, sx=null, sy=null){
+  closeInlineEdit(false);
+  if(!n) return;
+
+  // place editor at current label position (including bob)
+  const t = performance.now()/1000;
+  const bob = Math.sin(t*wobbleFreq(n) + n.seed) * 2.0;
+  const s = (sx===null || sy===null) ? worldToScreen(n.x, n.y + bob) : {x:sx, y:sy};
+  const el = document.createElement("input");
+  el.type = "text";
+  el.value = n.label;
+  el.setAttribute("aria-label", "名前を編集");
+  el.style.position = "absolute";
+  el.style.left = (s.x) + "px";
+  el.style.top  = (s.y) + "px";
+  el.style.transform = "translate(-50%, -50%)";
+  el.style.minWidth = "120px";
+  el.style.maxWidth = "70%";
+  el.style.padding = "8px 10px";
+  el.style.borderRadius = "12px";
+  el.style.border = "1px solid var(--panelBorder)";
+  el.style.background = "rgba(17,21,27,0.88)";
+  el.style.color = "var(--ink)";
+  el.style.outline = "none";
+  el.style.font = `600 ${Math.round(clamp(n.r * 0.35 * zoomTarget, 12, 44))}px ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Arial`;
+  el.style.zIndex = 10;
+  el.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
+
+  stage.appendChild(el);
+  inlineEdit = { active:true, nodeId:n.id, el, composing:false };
+
+  el.addEventListener("compositionstart", ()=> inlineEdit.composing = true);
+  el.addEventListener("compositionend", (e)=>{ inlineEdit.composing=false; setLabel(n.id, e.target.value); renderList(false); if(selectedIds.size===1 && isSelected(n.id)) renderPanel(); });
+
+  el.addEventListener("keydown", (e)=>{
+    if(e.key === "Enter"){
+      e.preventDefault();
+      closeInlineEdit(true);
+    }
+    if(e.key === "Escape"){
+      e.preventDefault();
+      closeInlineEdit(false);
+      canvas.focus?.();
+    }
+  });
+  el.addEventListener("blur", ()=> closeInlineEdit(true));
+
+  // focus after attach
+  requestAnimationFrame(()=>{
+    el.focus({preventScroll:true});
+    el.select();
+  });
+}
+
+canvas.addEventListener("dblclick", (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  const w = screenToWorld(sx,sy);
+  const n = nodeAtWorld(w.x,w.y);
+
+  // Double-click on empty space -> create a new bubble named "Bubble"
+  if(!n){
+    const created = createRowAndNode("Bubble", { x:w.x, y:w.y });
+    if(created) created.pulse = 1.0;
+    return;
+  }
+
+  if(!isSelected(n.id)) selectSingle(n.id);
+  n.pulse = 1.0;
+
+  // If double-click is on the label area -> inline rename
+  const t = performance.now()/1000;
+  const bob = Math.sin(t*wobbleFreq(n) + n.seed) * 2.0;
+  const s = worldToScreen(n.x, n.y + bob);
+  const fontSize = clamp(n.r * 0.35 * zoom, 10, 80);
+  ctx.save();
+  ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Arial`;
+  const tw = ctx.measureText(n.label || "").width;
+  ctx.restore();
+  const th = fontSize * 1.25;
+  const onText = (sx >= s.x - tw/2 && sx <= s.x + tw/2 && sy >= s.y - th/2 && sy <= s.y + th/2);
+
+  if(onText){
+    openInlineEdit(n, s.x, s.y);
+    return;
+  }
+
+  // Otherwise, center camera to the bubble
+  setCameraTargetCenterOnNode(n);
+});
+
+// clipboard (copy/paste bubbles)
+let clipboardNodes = null; // array of {label,desc,url,r,color,x,y}
+
+window.addEventListener("keydown", (e)=>{
+  const tag = (document.activeElement?.tagName || "").toLowerCase();
+  const inText = (tag === "input" || tag === "textarea");
+
+
+  // Undo / Redo (Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z / Ctrl/Cmd+Y)
+  if((e.ctrlKey || e.metaKey) && !inText){
+    if(e.key === "z" && !e.shiftKey){ e.preventDefault(); undo(); return; }
+    if((e.key === "Z" && e.shiftKey) || e.key === "y"){ e.preventDefault(); redo(); return; }
+}
+// Delete selected
+  if((e.key === "Delete" || e.key === "Backspace") && !inText){
+    if(anySelected()){
+      e.preventDefault();
+      removeSelected();
+      return;
+    }
+  }
+
+  // Copy (Ctrl/Cmd + C)
+  const mod = e.ctrlKey || e.metaKey;
+  if(mod && !inText && (e.key === "c" || e.key === "C")){
+    if(anySelected()){
+      e.preventDefault();
+      clipboardNodes = [...selectedIds].map(id=>{
+        const n = getNode(id);
+        if(!n) return null;
+        return { label: (n.label||""), desc:(n.desc||""), url:(n.url||""), r:n.r, color:n.color, x:n.x, y:n.y };
+      }).filter(Boolean);
+    }
+    return;
+  }
+
+  // Paste (Ctrl/Cmd + V)
+  if(mod && !inText && (e.key === "v" || e.key === "V")){
+    if(!clipboardNodes || clipboardNodes.length === 0) return;
+    e.preventDefault();
+
+    // paste near current view center
+    const viewCenterW = screenToWorld(W/2, H/2);
+    const base = clipboardNodes[0];
+    const dx0 = viewCenterW.x - base.x;
+    const dy0 = viewCenterW.y - base.y;
+    const step = 18 / zoomTarget;
+
+    const newIds = [];
+    clipboardNodes.forEach((c, i)=>{
+      const name = generateUniqueName(c.label);
+      const n = createRowAndNode(name, {
+        desc: c.desc,
+        url: c.url,
+        r: c.r,
+        color: c.color,
+        x: c.x + dx0 + step*i,
+        y: c.y + dy0 + step*i,
+      });
+      if(n) newIds.push(n.id);
+    });
+
+    // select pasted set
+    selectedIds.clear();
+    for(const id of newIds) selectedIds.add(id);
+    primarySelectedId = newIds[newIds.length-1] || null;
+    renderList(false);
+    renderPanel();
+    return;
+  }
+});
+
+/* ===== goo params ===== */
+const GOO = { blurPx: 15, cutoff: 72, softness: 10 };
+
+/* ===== render loop ===== */
+
+function step(){
+  for(const n of nodes){
+    n.pulse = Math.max(0, n.pulse * 0.86 - 0.01);
+  }
+
+  // one-shot "gather similar colors" (button action)
+  if(gatherSimilar.active){
+    const now = performance.now();
+    const p = clamp((now - gatherSimilar.t0) / gatherSimilar.duration, 0, 1);
+    // ease-out
+    const intensity = 1 - (1 - p) * (1 - p) * (1 - p);
+
+    const thr = 0.42; // similarity threshold (hue-based)
+
+    // Strength in world units; a bit weaker when zoomed in/out
+    const z = Math.max(0.35, zoomTarget);
+    const baseK = 0.020 / (0.75 + z*0.25);
+    const maxForce = (1.25 / z);
+
+    const desiredGap = 6 / z;
+
+    for(let i=0;i<nodes.length;i++){
+      for(let j=i+1;j<nodes.length;j++){
+        const a = nodes[i];
+        const b = nodes[j];
+
+        const sim = colorSimilarity(a.color || getCss("--bubble"), b.color || getCss("--bubble"));
+        if(sim < thr) continue;
+
+        const w = clamp((sim - thr) / (1 - thr), 0, 1);
+        const k = baseK * (0.20 + 2.80*Math.pow(w, 1.15)) * (1 - intensity);
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx,dy) || 0.0001;
+
+        const desired = (a.r + b.r + desiredGap) * (1.05 + 0.10*w);
+        const range = desired + (900 / z) * (0.35 + 0.65*Math.pow(w, 0.75));
+
+        if(dist > range) continue;
+
+        const diff = dist - desired;
+        let force = Math.max(-maxForce, Math.min(maxForce, diff * k));
+        // Pull far pairs a bit more (within range)
+        const distBoost = clamp(dist / Math.max(1e-6, range), 0, 1);
+        force *= (0.65 + 1.65*Math.pow(distBoost, 1.35));
+
+        const fx = (dx/dist) * force;
+        const fy = (dy/dist) * force;
+
+        a.x += fx;
+        a.y += fy;
+        b.x -= fx;
+        b.y -= fy;
+      }
+    }
+
+    if(p >= 1){
+      gatherSimilar.active = false;
+      setGatherBtnState(false);
+      pushHistory(); // snapshot after the move so undo works
+    }
+  }
+
+
+  // local gentle attraction (only nearby bubbles)
+  const desiredMul = 1.55; // attraction disabled
+  const k = 0;
+  const maxForce = 0;
+
+  for(let i=0;i<nodes.length;i++){
+    for(let j=i+1;j<nodes.length;j++){
+      const a = nodes[i];
+      const b = nodes[j];
+
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.hypot(dx,dy) || 0.0001;
+
+      const desired = (a.r + b.r) * desiredMul;
+      const range = 0;
+
+      if(dist > range) continue;
+
+      const diff = dist - desired;
+      const force = Math.max(-maxForce, Math.min(maxForce, diff * k));
+
+      const fx = (dx/dist) * force;
+      const fy = (dy/dist) * force;
+
+      a.x += fx;
+      a.y += fy;
+      b.x -= fx;
+      b.y -= fy;
+    }
+  }
+
+  updateCamera();
+}
+
+
+function drawLiquid(t){
+  const ow = baseC.width, oh = baseC.height;
+  baseCtx.clearRect(0,0,ow,oh);
+  blurCtx.clearRect(0,0,ow,oh);
+
+  for(const n of nodes){
+    const isSel = isSelected(n.id);
+    const isHover = (n.id === hoveredId);
+    const p = n.pulse;
+
+    const bob = Math.sin(t*wobbleFreq(n) + n.seed) * 2.0;
+    const rKick = 1 + 0.22 * p;
+
+    const baseCol = n.color || getCss("--bubble");
+    const col = isSel ? darkenColor(baseCol, 0.84)
+              : isHover ? darkenColor(baseCol, 0.92)
+              : baseCol;
+
+    const s = worldToScreen(n.x, n.y + bob);
+    const x = s.x * OFF_SCALE;
+    const y = s.y * OFF_SCALE;
+    const r = (n.r * rKick * zoom) * OFF_SCALE;
+
+    // Gradient shading: top slightly darker, bottom slightly brighter (lit from below)
+    const g = baseCtx.createLinearGradient(x, y - r, x, y + r);
+    g.addColorStop(0, darkenColor(col, 0.90));
+    g.addColorStop(0.55, col);
+    g.addColorStop(1, lightenColor(col, 0.18));
+    baseCtx.fillStyle = g;
+    baseCtx.beginPath();
+    baseCtx.arc(x,y,r,0,Math.PI*2);
+    baseCtx.fill();
+  }
+
+  blurCtx.save();
+  blurCtx.filter = `blur(${GOO.blurPx}px)`;
+  blurCtx.drawImage(baseC,0,0);
+  blurCtx.restore();
+
+  const img = blurCtx.getImageData(0,0,ow,oh);
+  const d = img.data;
+  for(let i=0;i<d.length;i+=4){
+    const a = d[i+3];
+    const m = smoothstep(GOO.cutoff, GOO.cutoff + GOO.softness, a);
+    if(m <= 0){ d[i+3] = 0; continue; }
+    d[i+3] = Math.round(255 * m);
+  }
+  blurCtx.putImageData(img,0,0);
+
+
+  /* --- glow pass (screen blend) --- */
+  if(glowCtx && glowBlurCtx){
+    glowCtx.clearRect(0,0,ow,oh);
+
+    for(const n of nodes){
+      const bob = Math.sin(t*wobbleFreq(n) + n.seed) * 2.0;
+      const baseCol = n.color || getCss("--bubble");
+
+      const s = worldToScreen(n.x, n.y + bob);
+      const x = s.x * OFF_SCALE;
+      const y = s.y * OFF_SCALE;
+      const r0 = (n.r * zoom) * OFF_SCALE;
+
+      // soft colored aura (outer)
+      const rg = glowCtx.createRadialGradient(x, y, r0*0.40, x, y, r0*1.55);
+      rg.addColorStop(0.00, "rgba(0,0,0,0)");
+      rg.addColorStop(0.25, "rgba(0,0,0,0)");
+      rg.addColorStop(1.00, "rgba(0,0,0,0)");
+      glowCtx.fillStyle = rg;
+      glowCtx.beginPath();
+      glowCtx.arc(x,y,r0*1.55,0,Math.PI*2);
+      glowCtx.fill();
+
+      glowCtx.globalAlpha = 0.65;
+      glowCtx.fillStyle = lightenColor(baseCol, 0.60);
+      glowCtx.beginPath();
+      glowCtx.arc(x,y,r0*1.12,0,Math.PI*2);
+      glowCtx.fill();
+      glowCtx.globalAlpha = 1.0;
+    }
+
+    glowBlurCtx.clearRect(0,0,ow,oh);
+    glowBlurCtx.save();
+    glowBlurCtx.filter = "blur(18px)";
+    glowBlurCtx.drawImage(glowC,0,0);
+    glowBlurCtx.restore();
+
+    // composite to main canvas behind goo
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.45;
+    ctx.drawImage(glowBlurC, 0, 0, W, H);
+    ctx.restore();
+  }
+
+  ctx.globalAlpha = 1.0;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(blurC, 0, 0, W, H);
+}
+
+function drawLabels(t){
+  for(const n of nodes){
+    const bob = Math.sin(t*wobbleFreq(n) + n.seed) * 2.0;
+
+    const baseCol = n.color || getCss("--bubble");
+    const L = luminance(baseCol);
+    const textCol = (L < 0.33) ? "#ffffff" : "#0b0d10";
+
+    const isSel = isSelected(n.id);
+    const isHover = (n.id === hoveredId);
+
+    const fontSize = clamp(n.r * 0.35 * zoom, 10, 80);
+
+    ctx.globalAlpha = isSel ? 0.92 : isHover ? 0.80 : 0.66;
+    ctx.fillStyle = textCol;
+    ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const s = worldToScreen(n.x, n.y + bob);
+    ctx.fillText(n.label, s.x, s.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawMarquee(){
+  if(!marquee.active) return;
+  const {x0,y0,x1,y1} = marqueeRect();
+  ctx.save();
+  ctx.strokeStyle = "rgba(233,237,243,0.55)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]);
+  ctx.strokeRect(x0, y0, x1-x0, y1-y0);
+  ctx.fillStyle = "rgba(233,237,243,0.06)";
+  ctx.fillRect(x0, y0, x1-x0, y1-y0);
+  ctx.restore();
+}
+
+function draw(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const t = performance.now()/1000;
+  drawLiquid(t);
+  drawLabels(t);
+  drawMarquee();
+}
+
+function loop(){
+  step();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+
+/* ===== right panel ===== */
+const panel = document.getElementById("panel");
+const bgColorInput = document.getElementById("bgColor");
+const bgHexEl = document.getElementById("bgHex");
+
+function setBgHexFromCss(){
+  const hex = toHex(getCss("--bg") || "#141928");
+  if(bgHexEl) bgHexEl.textContent = hex.toUpperCase();
+  if(bgColorInput) bgColorInput.value = hex;
+}
+
+setBgHexFromCss();
+// footer fixed: always available
+setBgHexFromCss();
+bgColorInput.addEventListener("pointerdown", ()=> armHistoryOnce(bgColorInput));
+bgColorInput.addEventListener("focus", ()=> armHistoryOnce(bgColorInput));
+bgColorInput.addEventListener("input", (e)=>{ setCss("--bg", e.target.value); setBgHexFromCss(); queueAutosave(); });
+
+if(bgHexEl){
+  bgHexEl.addEventListener("click", async ()=>{
+    const txt = bgHexEl.textContent || "";
+    try{ await navigator.clipboard.writeText(txt); }catch{}
+  });
+}
+function renderPanel(){
+  // keep footer picker in sync (e.g. when CSS updated elsewhere)
+  setBgHexFromCss();
+
+  if(selectedIds.size === 0){
+    panel.innerHTML = `
+      <div class="empty">水玉を選択すると、ここで編集できます。</div>
+    `;
+    return;
+  }
+
+  if(selectedIds.size > 1){
+    const first = getNode([...selectedIds][0]);
+    const baseColor = toHex(first?.color || getCss("--bubble"));
+
+    panel.innerHTML = `
+      <h1>${selectedIds.size} 個選択中</h1>
+      <div><span class="tag">zoom: ${(zoomTarget*100).toFixed(0)}%</span></div>
+
+      <div class="field">
+        <label>選択中のバブル色（まとめて変更）</label>
+        <input type="color" id="multiColor" value="${baseColor}" />
+      </div>
+
+      <div class="row">
+        <button id="btnDeleteMulti">選択を削除（Del）</button>
+        <button id="btnClear">選択解除</button>
+      </div>
+    `;
+
+    const multiColorEl = panel.querySelector("#multiColor");
+multiColorEl.addEventListener("pointerdown", ()=> armHistoryOnce(multiColorEl));
+multiColorEl.addEventListener("focus", ()=> armHistoryOnce(multiColorEl));
+multiColorEl.addEventListener("input", (e)=>{
+      applyColorToSelection(e.target.value);
+    });
+
+    panel.querySelector("#btnDeleteMulti").onclick = ()=> removeSelected();
+    panel.querySelector("#btnClear").onclick = ()=> clearSelection();
+    return;
+  }
+
+  const id = [...selectedIds][0];
+  const n = getNode(id);
+  if(!n){ clearSelection(); return; }
+
+  panel.innerHTML = `
+    <h1>選択中</h1>
+    <div><span class="tag">zoom: ${(zoomTarget*100).toFixed(0)}%</span></div>
+
+    <div class="field">
+      <label>名前</label>
+      <input type="text" id="fLabel" value="${escapeHtml(n.label)}" />
+    </div>
+
+    <div class="field">
+      <label>説明</label>
+      <textarea id="fDesc" placeholder="短いメモ…">${escapeHtml(n.desc||"")}</textarea>
+    </div>
+
+    <div class="field">
+      <label>リンク（任意）</label>
+      <input type="text" id="fUrl" placeholder="https://..." value="${escapeHtml(n.url||"")}" />
+    </div>
+
+    <div class="field">
+      <label>水玉サイズ</label>
+      <input type="range" id="fSize" min="26" max="90" step="1" value="${Math.round(n.r)}" />
+    </div>
+
+    <div class="field">
+      <label>水玉の色</label>
+      <input type="color" id="fColor" value="${toHex(n.color || getCss("--bubble"))}" />
+    </div>
+
+    <div class="row">
+      <button id="btnDelete">削除（Del）</button>
+      <button id="btnCenter">中央へ（dblclick）</button>
+    </div>
+  `;
+
+  const fLabel = panel.querySelector("#fLabel");
+  const fDesc  = panel.querySelector("#fDesc");
+  const fUrl   = panel.querySelector("#fUrl");
+  const fSize  = panel.querySelector("#fSize");
+  const fColor = panel.querySelector("#fColor");
+
+  // arm undo snapshot once when user starts editing any field
+  [fLabel, fDesc, fUrl, fSize, fColor].forEach(el=>{
+    if(!el) return;
+    el.addEventListener("pointerdown", ()=> armHistoryOnce(el));
+    el.addEventListener("focus", ()=> armHistoryOnce(el));
+  });
+
+  let composing = false;
+  fLabel.addEventListener("compositionstart", ()=> composing = true);
+  fLabel.addEventListener("compositionend", (e)=>{ composing=false; setLabel(n.id, e.target.value); renderList(false); });
+
+  fLabel.addEventListener("input", (e)=>{
+    if(composing) return;
+    setLabel(n.id, e.target.value);
+  });
+  fLabel.addEventListener("blur", (e)=>{
+    setLabel(n.id, e.target.value, {commitOnEmpty:true});
+    renderList(false);
+  });
+
+  fDesc.addEventListener("input", ()=>{ n.desc = fDesc.value; });
+  fUrl.addEventListener("input", ()=>{ n.url = fUrl.value; });
+  fSize.addEventListener("input", ()=>{ n.r = Number(fSize.value); });
+  fColor.addEventListener("input", ()=>{ n.color = fColor.value; });
+
+  panel.querySelector("#btnDelete").onclick = ()=> removeNode(n.id);
+  panel.querySelector("#btnCenter").onclick = ()=>{
+    setCameraTargetCenterOnNode(n);
+    n.pulse = 1.0;
+  };
+}
+
+/* ===== left list (× works reliably) ===== */
+const listEl = document.getElementById("list");
+const addInput = document.getElementById("addInput");
+const addBtn = document.getElementById("addBtn");
+
+// drag-reorder (left list)
+let dragRowId = null;
+function reorderRows(dragId, targetId){
+  if(!dragId || !targetId || dragId === targetId) return;
+  const from = rows.findIndex(r=>r.rowId===dragId);
+  const to0  = rows.findIndex(r=>r.rowId===targetId);
+  if(from < 0 || to0 < 0) return;
+  const [m] = rows.splice(from, 1);
+  const to = (from < to0) ? (to0 - 1) : to0;
+  rows.splice(to, 0, m);
+}
+
+function renderList(resetFocus=true){
+  const activeEl = document.activeElement;
+  const activeRowId = activeEl?.dataset?.rowId || null;
+
+  listEl.innerHTML = "";
+
+  for(const r of rows){
+    const rowEl = document.createElement("div");
+    rowEl.className = "rowItem";
+    rowEl.dataset.rowId = r.rowId;
+    if(isSelected(r.nodeId)) rowEl.classList.add("isSelected");
+
+    // drag & drop reorder
+    rowEl.addEventListener("dragover", (e)=>{
+      if(!dragRowId) return;
+      e.preventDefault();
+      try{ e.dataTransfer.dropEffect = "move"; }catch{}
+      rowEl.classList.add("isDropTarget");
+    });
+    rowEl.addEventListener("dragleave", ()=> rowEl.classList.remove("isDropTarget"));
+    rowEl.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      const fromId = dragRowId || (()=>{ try{return e.dataTransfer.getData('text/plain');}catch{return null;} })();
+      const toId = r.rowId;
+      pushHistory();
+ reorderRows(fromId, toId);
+      dragRowId = null;
+      renderList(false);
+    });
+
+    const handle = document.createElement("div");
+    handle.className = "handle";
+    handle.textContent = "⋮⋮";
+    handle.draggable = true;
+    handle.title = "ドラッグで並び替え";
+
+    handle.addEventListener("dragstart", (e)=>{
+      dragRowId = r.rowId;
+      rowEl.classList.add("isDragging");
+      try{ e.dataTransfer.setData("text/plain", dragRowId); }catch{}
+      try{ e.dataTransfer.effectAllowed = "move"; }catch{}
+    });
+    handle.addEventListener("dragend", ()=>{
+      dragRowId = null;
+      rowEl.classList.remove("isDragging");
+      listEl.querySelectorAll('.rowItem').forEach(x=>x.classList.remove('isDropTarget'));
+    });
+
+    const input = document.createElement("input");
+    input.className = "itemInput";
+    input.value = r.label;
+    input.dataset.rowId = r.rowId;
+
+    const del = document.createElement("button");
+    del.className = "miniBtn";
+    del.type = "button";
+    del.textContent = "×";
+    del.title = "削除";
+
+    rowEl.addEventListener("pointerdown", (e)=>{
+      const isControl = !!e.target.closest("button, input, .handle");
+      if(isControl) return;
+
+      const rr = getRow(rowEl.dataset.rowId);
+      if(!rr) return;
+      if(e.shiftKey) toggleSelection(rr.nodeId);
+      else selectSingle(rr.nodeId);
+    });
+
+    input.addEventListener("pointerdown", (e)=> e.stopPropagation());
+    let composing = false;
+    input.addEventListener("compositionstart", ()=> composing = true);
+    input.addEventListener("compositionend", (e)=>{ composing=false; setLabel(r.nodeId, e.target.value); renderPanel(); });
+
+    input.addEventListener("input", (e)=>{
+      if(composing) return;
+      setLabel(r.nodeId, e.target.value);
+      if(selectedIds.size === 1 && isSelected(r.nodeId)) renderPanel();
+    });
+
+    input.addEventListener("blur", (e)=>{
+      setLabel(r.nodeId, e.target.value, {commitOnEmpty:true});
+      renderList(false);
+      if(selectedIds.size === 1 && isSelected(r.nodeId)) renderPanel();
+    });
+
+    input.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter"){ e.preventDefault(); input.blur(); }
+    });
+
+    del.addEventListener("pointerdown", (e)=>{ e.stopPropagation(); e.preventDefault(); });
+    del.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      const rr = getRow(rowEl.dataset.rowId);
+      if(rr) removeNode(rr.nodeId);
+    });
+
+    rowEl.appendChild(handle);
+    rowEl.appendChild(input);
+    rowEl.appendChild(del);
+    listEl.appendChild(rowEl);
+  }
+
+  if(!resetFocus && activeRowId){
+    const el = listEl.querySelector(`input.itemInput[data-row-id="${activeRowId}"]`);
+    if(el) el.focus({preventScroll:true});
+  }
+}
+
+function addFromInput(){
+  const name = addInput.value.trim();
+  if(!name) return;
+  createRowAndNode(name);
+  addInput.value = "";
+  renderList(false);
+  renderPanel();
+}
+addInput.addEventListener("keydown", (e)=>{
+  if(e.key === "Enter"){ e.preventDefault(); addFromInput(); }
+});
+addInput.addEventListener("blur", ()=> addFromInput());
+addBtn.addEventListener("click", addFromInput);
+
+tryRestoreAutosave();
+
+renderList();
+renderPanel();
+setGatherBtnState(false);
+
+pushHistory();
+</script>
+</body>
+</html>
